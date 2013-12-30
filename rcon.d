@@ -34,54 +34,58 @@ private:
     SERVERDATA_AUTH_RESPONSE = 2,
     SERVERDATA_AUTH = 3;
 
-  Socket connect(string host, string service) {
+  static Socket connect(string host, string service) {
     if(verbose > 0) stderr.writefln("connecting to server %s:%s", host, service);
-    auto addrinfos = getAddressInfo(host, service, SocketType.STREAM, ProtocolType.TCP);
-    foreach(addrinfo; addrinfos) {
+    foreach(addrinfo; getAddressInfo(host, service, SocketType.STREAM, ProtocolType.TCP)) {
       try {
         if(verbose > 1) stderr.writefln("connect: %s", addrinfo);
         auto socket = new Socket(addrinfo);
+        scope(failure) socket.close();
         socket.connect(addrinfo.address);
         return socket;
       } catch(SocketException ex) {
         if(verbose > 1) stderr.writefln("connection failed (%s)", ex.msg);
-        // try next
       }
     }
     throw new RConException("connection failure");
   }
 
-  struct Packet {
+  static struct Packet {
     int id, type;
     const(char)[] content;
+
+    void write(Stream sink) const {
+      int len = cast(int)(content.length + 10);
+      sink.write(len);
+      sink.write(id);
+      sink.write(type);
+      sink.writeExact(content.ptr, content.length);
+      sink.write('\0');
+      sink.write('\0');
+    }
+
+    void read(Stream source) {
+      int len = void;
+      source.read(len);
+      source.read(id);
+      source.read(type);
+      auto tmp = new char[](len - 10);
+      source.readExact(tmp.ptr, tmp.length);
+      content = tmp;
+      source.getc(); // '\0'
+      source.getc(); // '\0'
+    }
   }
 
   void send(Packet packet) {
     if(verbose > 2) stderr.writefln("send: %s", packet);
-
-    int len = cast(int)(packet.content.length + 10);
-    endpoint.write(len);
-    endpoint.write(packet.id);
-    endpoint.write(packet.type);
-    endpoint.writeExact(packet.content.ptr, packet.content.length);
-    endpoint.write('\0');
-    endpoint.write('\0');
+    packet.write(endpoint);
     endpoint.flush();
   }
 
   Packet recv() {
-    typeof(return) packet;
-
-    int len = void;
-    endpoint.read(len);
-    endpoint.read(packet.id);
-    endpoint.read(packet.type);
-    auto content = new char[](len - 10);
-    endpoint.readExact(content.ptr, content.length);
-    packet.content = content;
-    endpoint.getc(); // '\0'
-    endpoint.getc(); // '\0'
-
+    typeof(return) packet = void;
+    packet.read(endpoint);
     if(verbose > 2) stderr.writefln("recv: %s", packet);
     return packet;
   }
@@ -92,6 +96,10 @@ public:
   this(string host, string service) {
     auto socket = connect(host, service);
     endpoint = new EndianStream(new SocketStream(socket), Endian.littleEndian);
+  }
+
+  void close() {
+    endpoint.close();
   }
 
   void login(string password) {
@@ -127,7 +135,7 @@ public:
     return assumeUnique(res.content);
   }
 
-  class RConException : Exception {
+  static class RConException : Exception {
     this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable next = null) {
       super(msg, file, line, next);
     }
@@ -173,6 +181,8 @@ void main(string[] args) {
 
   try {
     auto rcon = new RCon(host, port);
+    scope(exit) rcon.close();
+
     rcon.login(password);
 
     if(args.length > 0) {
