@@ -1,8 +1,7 @@
 module rcon;
 
 import std.algorithm: map;
-import std.array: replace, join, split, popFront, front;
-import std.exception: assumeUnique;
+import std.array: Appender, replace, join, split, popFront, front;
 import std.file: readText;
 import std.getopt: getopt, config;
 import std.socket: Socket, SocketException, SocketType, ProtocolType, getAddressInfo;
@@ -124,15 +123,23 @@ public:
 
     if(verbose > 1) stderr.writeln("sending command to server");
     send(Packet(seq, SERVERDATA_EXECCOMMAND, command));
+    send(Packet(-1, SERVERDATA_RESPONSE_VALUE, ""));
+
+    Appender!string result;
 
     if(verbose > 1) stderr.writeln("receiving response for command");
-    auto res = recv();
+    for(;;) {
+      auto res = recv();
 
-    if(res.id != seq || res.type != SERVERDATA_RESPONSE_VALUE) {
-      throw new RConException("execution failure");
+      if(res.id == -1 && res.type == SERVERDATA_RESPONSE_VALUE) break;
+      if(res.id != seq || res.type != SERVERDATA_RESPONSE_VALUE) {
+        throw new RConException("execution failure");
+      }
+
+      result ~= res.content;
     }
 
-    return assumeUnique(res.content);
+    return result.data;
   }
 
   static class RConException : Exception {
