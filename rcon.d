@@ -51,7 +51,7 @@ private:
 
   static struct Packet {
     int id, type;
-    const(char)[] content;
+    char[] content;
 
     void write(Stream sink) const {
       int len = cast(int)(content.length + 10);
@@ -68,15 +68,14 @@ private:
       source.read(len);
       source.read(id);
       source.read(type);
-      auto tmp = new char[](len - 10);
-      source.readExact(tmp.ptr, tmp.length);
-      content = tmp;
+      content = new char[](len - 10);
+      source.readExact(content.ptr, content.length);
       source.getc(); // '\0'
       source.getc(); // '\0'
     }
   }
 
-  void send(Packet packet) {
+  void send(const(Packet) packet) {
     if(verbose > 2) stderr.writefln("send: %s", packet);
     packet.write(endpoint);
     endpoint.flush();
@@ -103,7 +102,7 @@ public:
 
   void login(string password) {
     if(verbose > 1) stderr.writeln("sending password to server");
-    send(Packet(0xCAFE, SERVERDATA_AUTH, password));
+    send(const(Packet)(0xCAFE, SERVERDATA_AUTH, password));
 
     if(verbose > 1) stderr.writeln("receiving response for auth");
     auto res = recv();
@@ -122,8 +121,8 @@ public:
     immutable seq = ++sequence;
 
     if(verbose > 1) stderr.writeln("sending command to server");
-    send(Packet(seq, SERVERDATA_EXECCOMMAND, command));
-    send(Packet(-1, SERVERDATA_RESPONSE_VALUE, ""));
+    send(const(Packet)(seq, SERVERDATA_EXECCOMMAND, command));
+    send(const(Packet)(-1, SERVERDATA_RESPONSE_VALUE, ""));
 
     Appender!string result;
 
