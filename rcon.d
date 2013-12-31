@@ -118,11 +118,11 @@ public:
   }
 
   string execute(string command) {
-    immutable seq = ++sequence;
+    immutable seq = sequence++;
 
     if(verbose > 1) stderr.writeln("sending command to server");
     send(const(Packet)(seq, SERVERDATA_EXECCOMMAND, command));
-    send(const(Packet)(-1, SERVERDATA_RESPONSE_VALUE, ""));
+    send(const(Packet)(seq, SERVERDATA_RESPONSE_VALUE, ""));
 
     Appender!string result;
 
@@ -130,11 +130,11 @@ public:
     for(;;) {
       auto res = recv();
 
-      if(res.id == -1 && res.type == SERVERDATA_RESPONSE_VALUE) break;
       if(res.id != seq || res.type != SERVERDATA_RESPONSE_VALUE) {
         throw new RConException("execution failure");
       }
 
+      if(res.content == "\0\1\0\0") break;
       result ~= res.content;
     }
 
