@@ -73,6 +73,34 @@ private:
       source.getc(); // '\0'
       source.getc(); // '\0'
     }
+
+    /// serialization and deserialization
+    unittest {
+      import std.stream: MemoryStream;
+
+      enum packetId = 0xDEADBEEF;
+      enum packetType = SERVERDATA_AUTH;
+      enum packetContent = "steam";
+
+      auto packet = const(Packet)(packetId, packetType, packetContent);
+
+      auto stream = new MemoryStream;
+      packet.write(stream);
+
+      assert(stream.data.length == 12+packetContent.length+2);
+      assert(stream.data[0..4] == [4+4+packetContent.length+2, 0, 0, 0]); // len
+      assert(stream.data[4..8] == [0xEF, 0xBE, 0xAD, 0xDE]); // id
+      assert(stream.data[8..12] == [packetType, 0, 0, 0]); // type
+      assert(stream.data[12..12+packetContent.length] == cast(immutable(ubyte)[])packetContent);
+      assert(stream.data[12+packetContent.length] == 0);
+      assert(stream.data[12+packetContent.length+1] == 0);
+
+      Packet packet0 = void;
+      stream.seekSet(0);
+      packet0.read(stream);
+
+      assert(packet == packet0);
+    }
   }
 
   void send(const(Packet) packet) {
